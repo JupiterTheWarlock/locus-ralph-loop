@@ -2,12 +2,12 @@
   "schema": "locus.skill.v1",
   "id": "ralph-loop",
   "name": "Ralph Loop",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "injectMode": "excerpt",
-  "description": "Use when a Locus Ralph Loop controller asks the agent to advance one checkpoint in a long-running task.",
+  "description": "用于 Ralph Loop 控制器投递的循环迭代：一次只推进一个 story/checkpoint，并用 <promise>COMPLETE</promise> 表示全部完成。",
   "command": {
     "enabled": true,
     "trigger": "/ralph-loop",
-    "argumentHint": "<objective or checkpoint>"
+    "argumentHint": "<目标或当前 checkpoint>"
   }
 }

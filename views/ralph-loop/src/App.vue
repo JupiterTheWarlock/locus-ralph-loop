@@ -4,6 +4,11 @@ import { view } from "@locus/view-runtime";
 
 type LoopStatus = "idle" | "running" | "paused" | "done" | "blocked" | "error";
 
+interface ModelOption {
+  id: string;
+  label: string;
+}
+
 interface LoopRun {
   iteration: number;
   runId: string;
@@ -15,7 +20,6 @@ interface LoopRun {
 interface LoopState {
   objective: string;
   sessionId: string | null;
-  agentId: string;
   model: string;
   maxIterations: number;
   iteration: number;
@@ -31,7 +35,6 @@ const progressPath = "Locus/ralph-loop/progress.md";
 const state = ref<LoopState>({
   objective: "",
   sessionId: null,
-  agentId: "dev",
   model: "",
   maxIterations: 20,
   iteration: 0,
@@ -41,10 +44,20 @@ const state = ref<LoopState>({
   runs: [],
 });
 
+const modelOptions: ModelOption[] = [
+  { id: "", label: "跟随当前会话默认模型" },
+  { id: "claude_code/sonnet", label: "Claude Code CLI · Sonnet" },
+  { id: "claude_code/opus", label: "Claude Code CLI · Opus" },
+  { id: "openai/gpt-5.5", label: "OpenAI · GPT-5.5" },
+  { id: "openai/gpt-5.5-codex", label: "OpenAI · GPT-5.5 Codex" },
+  { id: "openrouter/claude-sonnet-4.6", label: "OpenRouter · Claude Sonnet 4.6" },
+  { id: "openrouter/claude-opus-4.6", label: "OpenRouter · Claude Opus 4.6" },
+];
+
 const busy = computed(() => state.value.status === "running");
 const canRun = computed(() => state.value.objective.trim().length > 0 && !busy.value);
 const statusText = computed(() => {
-  if (state.value.status === "idle") return "Ready";
+  if (state.value.status === "idle") return "就绪";
   return `${state.value.status} · ${state.value.iteration}/${state.value.maxIterations}`;
 });
 
@@ -78,51 +91,41 @@ async function loadState() {
 
 function iterationPrompt(iteration: number) {
   return [
-    "You are running inside a Locus Ralph Loop controller.",
+    "/ralph-loop",
     "",
-    `Objective: ${state.value.objective.trim()}`,
+    "你正在 Locus Ralph Loop 控制器里运行一次循环迭代。",
     "",
-    "Work one focused checkpoint only. Use normal Locus tools and project context.",
-    "Before ending, report exactly one status marker on its own line:",
-    "- RALPH_LOOP_DONE when the objective is complete and verified.",
-    "- RALPH_LOOP_BLOCKED when you need user input or cannot make meaningful progress.",
-    "- RALPH_LOOP_CONTINUE when more work remains.",
+    `目标：${state.value.objective.trim()}`,
     "",
-    "Also include a short progress summary and the next checkpoint if continuing.",
-    `Iteration: ${iteration}/${state.value.maxIterations}`,
+    "对齐 Ralph Loop 的工作方式：读取目标和已有进展，只推进一个清晰 checkpoint，使用普通 Locus 会话、工具和项目上下文完成工作。",
+    "每轮结束前请写入可持久化进展；如果存在 Locus/ralph-loop/progress.md，请追加本轮发现。",
+    "结束时必须单独输出一个状态标记：",
+    "- <promise>COMPLETE</promise>：目标已经完成并验证。",
+    "- RALPH_LOOP_BLOCKED：需要用户输入或外部状态变化。",
+    "- RALPH_LOOP_CONTINUE：还需要继续下一轮。",
+    "",
+    "同时给出简短进展、验证结果，以及如果继续时的下一个 checkpoint。",
+    `迭代：${iteration}/${state.value.maxIterations}`,
   ].join("\n");
 }
 
 function classify(text: string): LoopStatus {
-  if (text.includes("RALPH_LOOP_DONE")) return "done";
+  if (text.includes("<promise>COMPLETE</promise>") || text.includes("RALPH_LOOP_DONE")) return "done";
   if (text.includes("RALPH_LOOP_BLOCKED")) return "blocked";
   return "running";
 }
 
-async function ensureSession() {
-  if (state.value.sessionId) return state.value.sessionId;
-  const sessionId = await view.session.create({
-    title: "Ralph Loop",
-    sessionType: "chat",
-    agentId: state.value.agentId || "dev",
-  });
-  state.value.sessionId = sessionId;
-  await saveState();
-  return sessionId;
-}
-
 async function runOneIteration() {
-  const sessionId = await ensureSession();
   const iteration = state.value.iteration + 1;
   const response = await view.session.chat({
-    sessionId,
     text: iterationPrompt(iteration),
-    agentId: state.value.agentId || "dev",
+    sessionId: state.value.sessionId,
+    sessionTitle: "Ralph Loop",
+    sessionType: "chat",
     model: state.value.model.trim() || null,
     mode: "build",
     show: true,
     wait: {
-      sessionId,
       timeoutMs: 1000 * 60 * 45,
       pollIntervalMs: 1200,
       includeEvents: true,
@@ -136,6 +139,7 @@ async function runOneIteration() {
   const nextStatus = classify(finalText);
   const summary = finalText.trim().slice(0, 1200);
 
+  state.value.sessionId = response.sessionId;
   state.value.iteration = iteration;
   state.value.progress = summary;
   state.value.runs.unshift({
@@ -150,8 +154,8 @@ async function runOneIteration() {
   await appendProgress([
     `## Iteration ${iteration}`,
     "",
-    `Run: ${response.runId}`,
-    `Status: ${runStatus}`,
+    `运行：${response.runId}`,
+    `状态：${runStatus}`,
     "",
     summary || "(no final text)",
   ].join("\n"));
@@ -176,7 +180,7 @@ async function startLoop() {
     }
     if (state.value.status === "running") {
       state.value.status = "paused";
-      state.value.lastError = "Stopped at max iteration limit.";
+      state.value.lastError = "已达到最大迭代次数，循环暂停。";
       await saveState();
     }
   } catch (error) {
@@ -221,35 +225,35 @@ onMounted(() => {
         <small>{{ statusText }}</small>
       </div>
       <div class="toolbar-actions">
-        <button :disabled="!state.sessionId" @click="openSession">Session</button>
-        <button :disabled="!canRun" @click="startLoop">Run</button>
-        <button :disabled="!busy" @click="pauseLoop">Pause</button>
-        <button :disabled="busy" @click="resetLoop">Reset</button>
+        <button :disabled="!state.sessionId" @click="openSession">打开会话</button>
+        <button :disabled="!canRun" @click="startLoop">开始</button>
+        <button :disabled="!busy" @click="pauseLoop">暂停</button>
+        <button :disabled="busy" @click="resetLoop">重置</button>
       </div>
     </header>
 
     <section class="view-content">
       <section class="control-panel">
         <label>
-          <span>Objective</span>
+          <span>目标</span>
           <textarea v-model="state.objective" :disabled="busy" rows="6" @change="saveState" />
         </label>
         <div class="control-grid">
           <label>
-            <span>Agent</span>
-            <input v-model="state.agentId" :disabled="busy" @change="saveState" />
+            <span>模型</span>
+            <select v-model="state.model" :disabled="busy" @change="saveState">
+              <option v-for="option in modelOptions" :key="option.id" :value="option.id">
+                {{ option.label }}
+              </option>
+            </select>
           </label>
           <label>
-            <span>Model</span>
-            <input v-model="state.model" :disabled="busy" placeholder="default" @change="saveState" />
-          </label>
-          <label>
-            <span>Max Iterations</span>
+            <span>最大迭代</span>
             <input v-model.number="state.maxIterations" :disabled="busy" type="number" min="1" max="200" @change="saveState" />
           </label>
           <label>
-            <span>Session</span>
-            <input :value="state.sessionId || 'new session on run'" disabled />
+            <span>会话</span>
+            <input :value="state.sessionId || '首次运行时创建/复用默认输入流程'" disabled />
           </label>
         </div>
       </section>
@@ -258,25 +262,25 @@ onMounted(() => {
 
       <section class="progress-panel">
         <div class="panel-heading">
-          <span>Progress</span>
+          <span>进展</span>
           <small>{{ statePath }}</small>
         </div>
-        <pre>{{ state.progress || "No iterations yet." }}</pre>
+        <pre>{{ state.progress || "还没有迭代记录。" }}</pre>
       </section>
 
       <section class="runs-panel">
         <div class="panel-heading">
-          <span>Runs</span>
-          <small>{{ state.runs.length }} recorded</small>
+          <span>运行记录</span>
+          <small>{{ state.runs.length }} 条</small>
         </div>
-        <div v-if="state.runs.length === 0" class="empty">No runs recorded.</div>
+        <div v-if="state.runs.length === 0" class="empty">暂无运行记录。</div>
         <article v-for="run in state.runs" :key="run.runId" class="run-row">
           <div class="run-meta">
             <strong>#{{ run.iteration }}</strong>
             <span>{{ run.status }}</span>
             <small>{{ run.finishedAt }}</small>
           </div>
-          <p>{{ run.summary || "No summary." }}</p>
+          <p>{{ run.summary || "没有摘要。" }}</p>
         </article>
       </section>
     </section>
