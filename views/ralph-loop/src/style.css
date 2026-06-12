@@ -71,6 +71,22 @@ body,
   gap: 6px;
 }
 
+.locale-switch {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.locale-switch span {
+  font-size: 11px;
+}
+
+.locale-switch select {
+  min-height: 28px;
+  padding: 0 7px;
+}
+
 button {
   min-height: 28px;
   padding: 0 10px;
@@ -250,6 +266,16 @@ pre {
 }
 
 @media (max-width: 900px) {
+  .view-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 8px 10px;
+  }
+
+  .toolbar-actions {
+    flex-wrap: wrap;
+  }
+
   .control-grid {
     grid-template-columns: 1fr;
   }

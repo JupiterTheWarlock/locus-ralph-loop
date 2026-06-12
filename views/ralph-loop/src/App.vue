@@ -3,10 +3,12 @@ import { computed, onMounted, ref } from "vue";
 import { view } from "@locus/view-runtime";
 
 type LoopStatus = "idle" | "running" | "paused" | "done" | "blocked" | "error";
+type Locale = "zh" | "en";
 
 interface ModelOption {
   id: string;
-  label: string;
+  name: string;
+  provider: string;
 }
 
 interface LoopRun {
@@ -21,6 +23,7 @@ interface LoopState {
   objective: string;
   sessionId: string | null;
   model: string;
+  locale: Locale;
   maxIterations: number;
   iteration: number;
   status: LoopStatus;
@@ -36,6 +39,7 @@ const state = ref<LoopState>({
   objective: "",
   sessionId: null,
   model: "",
+  locale: "zh",
   maxIterations: 20,
   iteration: 0,
   status: "idle",
@@ -44,22 +48,79 @@ const state = ref<LoopState>({
   runs: [],
 });
 
-const modelOptions: ModelOption[] = [
-  { id: "", label: "跟随当前会话默认模型" },
-  { id: "claude_code/sonnet", label: "Claude Code CLI · Sonnet" },
-  { id: "claude_code/opus", label: "Claude Code CLI · Opus" },
-  { id: "openai/gpt-5.5", label: "OpenAI · GPT-5.5" },
-  { id: "openai/gpt-5.5-codex", label: "OpenAI · GPT-5.5 Codex" },
-  { id: "openrouter/claude-sonnet-4.6", label: "OpenRouter · Claude Sonnet 4.6" },
-  { id: "openrouter/claude-opus-4.6", label: "OpenRouter · Claude Opus 4.6" },
-];
+const runtimeView = view as typeof view & {
+  models?: {
+    list?: () => Promise<ModelOption[]>;
+  };
+};
+
+const runtimeModels = ref<ModelOption[]>([]);
+const modelLoadError = ref("");
+
+const text = {
+  zh: {
+    ready: "就绪",
+    openSession: "打开会话",
+    start: "开始",
+    pause: "暂停",
+    reset: "重置",
+    objective: "目标",
+    model: "模型",
+    defaultModel: "跟随当前会话默认模型",
+    maxIterations: "最大迭代",
+    session: "会话",
+    newSession: "首次运行时创建/复用默认输入流程",
+    progress: "进展",
+    noProgress: "还没有迭代记录。",
+    runs: "运行记录",
+    runCount: (count: number) => `${count} 条`,
+    noRuns: "暂无运行记录。",
+    noSummary: "没有摘要。",
+    maxIterationsReached: "已达到最大迭代次数，循环暂停。",
+    modelLoadFailed: "读取 Locus 可用模型失败：",
+    language: "语言",
+  },
+  en: {
+    ready: "Ready",
+    openSession: "Open Session",
+    start: "Start",
+    pause: "Pause",
+    reset: "Reset",
+    objective: "Objective",
+    model: "Model",
+    defaultModel: "Follow current session default",
+    maxIterations: "Max iterations",
+    session: "Session",
+    newSession: "Create/reuse default input flow on first run",
+    progress: "Progress",
+    noProgress: "No iterations yet.",
+    runs: "Runs",
+    runCount: (count: number) => `${count} recorded`,
+    noRuns: "No runs recorded.",
+    noSummary: "No summary.",
+    maxIterationsReached: "Stopped at the max iteration limit.",
+    modelLoadFailed: "Failed to read Locus available models: ",
+    language: "Language",
+  },
+};
+
+const tr = computed(() => text[state.value.locale] ?? text.zh);
+const modelOptions = computed(() => [
+  { id: "", name: tr.value.defaultModel, provider: "" },
+  ...runtimeModels.value,
+]);
 
 const busy = computed(() => state.value.status === "running");
 const canRun = computed(() => state.value.objective.trim().length > 0 && !busy.value);
 const statusText = computed(() => {
-  if (state.value.status === "idle") return "就绪";
+  if (state.value.status === "idle") return tr.value.ready;
   return `${state.value.status} · ${state.value.iteration}/${state.value.maxIterations}`;
 });
+
+function modelLabel(option: ModelOption) {
+  if (!option.provider) return option.name;
+  return `${option.name} · ${option.provider}`;
+}
 
 async function ensureStateDir() {
   await view.fs.mkdir("Locus/ralph-loop", { recursive: true });
@@ -86,6 +147,24 @@ async function loadState() {
     };
   } catch {
     await saveState();
+  }
+}
+
+async function loadModels() {
+  modelLoadError.value = "";
+  try {
+    if (!runtimeView.models?.list) {
+      throw new Error("当前 Locus View runtime 未暴露会话模型列表，请先使用已更新的 Locus。");
+    }
+    const list = await runtimeView.models.list();
+    runtimeModels.value = Array.isArray(list) ? list : [];
+    if (state.value.model && !runtimeModels.value.some((model) => model.id === state.value.model)) {
+      state.value.model = "";
+      await saveState();
+    }
+  } catch (error) {
+    runtimeModels.value = [];
+    modelLoadError.value = error instanceof Error ? error.message : String(error);
   }
 }
 
@@ -180,7 +259,7 @@ async function startLoop() {
     }
     if (state.value.status === "running") {
       state.value.status = "paused";
-      state.value.lastError = "已达到最大迭代次数，循环暂停。";
+      state.value.lastError = tr.value.maxIterationsReached;
       await saveState();
     }
   } catch (error) {
@@ -213,7 +292,7 @@ async function openSession() {
 }
 
 onMounted(() => {
-  void loadState();
+  void loadState().then(loadModels);
 });
 </script>
 
@@ -225,62 +304,70 @@ onMounted(() => {
         <small>{{ statusText }}</small>
       </div>
       <div class="toolbar-actions">
-        <button :disabled="!state.sessionId" @click="openSession">打开会话</button>
-        <button :disabled="!canRun" @click="startLoop">开始</button>
-        <button :disabled="!busy" @click="pauseLoop">暂停</button>
-        <button :disabled="busy" @click="resetLoop">重置</button>
+        <label class="locale-switch">
+          <span>{{ tr.language }}</span>
+          <select v-model="state.locale" :disabled="busy" @change="saveState">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+        <button :disabled="!state.sessionId" @click="openSession">{{ tr.openSession }}</button>
+        <button :disabled="!canRun" @click="startLoop">{{ tr.start }}</button>
+        <button :disabled="!busy" @click="pauseLoop">{{ tr.pause }}</button>
+        <button :disabled="busy" @click="resetLoop">{{ tr.reset }}</button>
       </div>
     </header>
 
     <section class="view-content">
       <section class="control-panel">
         <label>
-          <span>目标</span>
+          <span>{{ tr.objective }}</span>
           <textarea v-model="state.objective" :disabled="busy" rows="6" @change="saveState" />
         </label>
         <div class="control-grid">
           <label>
-            <span>模型</span>
+            <span>{{ tr.model }}</span>
             <select v-model="state.model" :disabled="busy" @change="saveState">
               <option v-for="option in modelOptions" :key="option.id" :value="option.id">
-                {{ option.label }}
+                {{ modelLabel(option) }}
               </option>
             </select>
           </label>
           <label>
-            <span>最大迭代</span>
+            <span>{{ tr.maxIterations }}</span>
             <input v-model.number="state.maxIterations" :disabled="busy" type="number" min="1" max="200" @change="saveState" />
           </label>
           <label>
-            <span>会话</span>
-            <input :value="state.sessionId || '首次运行时创建/复用默认输入流程'" disabled />
+            <span>{{ tr.session }}</span>
+            <input :value="state.sessionId || tr.newSession" disabled />
           </label>
         </div>
       </section>
 
       <section v-if="state.lastError" class="notice error">{{ state.lastError }}</section>
+      <section v-if="modelLoadError" class="notice error">{{ tr.modelLoadFailed }}{{ modelLoadError }}</section>
 
       <section class="progress-panel">
         <div class="panel-heading">
-          <span>进展</span>
+          <span>{{ tr.progress }}</span>
           <small>{{ statePath }}</small>
         </div>
-        <pre>{{ state.progress || "还没有迭代记录。" }}</pre>
+        <pre>{{ state.progress || tr.noProgress }}</pre>
       </section>
 
       <section class="runs-panel">
         <div class="panel-heading">
-          <span>运行记录</span>
-          <small>{{ state.runs.length }} 条</small>
+          <span>{{ tr.runs }}</span>
+          <small>{{ tr.runCount(state.runs.length) }}</small>
         </div>
-        <div v-if="state.runs.length === 0" class="empty">暂无运行记录。</div>
+        <div v-if="state.runs.length === 0" class="empty">{{ tr.noRuns }}</div>
         <article v-for="run in state.runs" :key="run.runId" class="run-row">
           <div class="run-meta">
             <strong>#{{ run.iteration }}</strong>
             <span>{{ run.status }}</span>
             <small>{{ run.finishedAt }}</small>
           </div>
-          <p>{{ run.summary || "没有摘要。" }}</p>
+          <p>{{ run.summary || tr.noSummary }}</p>
         </article>
       </section>
     </section>
