@@ -416,10 +416,8 @@ function iterationPrompt(iteration: number) {
     "Ralph Loop contract: read the objective, repository state, and durable progress, then advance exactly one clear checkpoint.",
     "Do not rely on prior chat context. Each iteration runs in a fresh Locus session; use repository files and Locus/ralph-loop/progress.md for continuity.",
     "Before finishing, persist reusable findings or next-step context when useful.",
-    "End with exactly one standalone status marker:",
-    "- <promise>COMPLETE</promise>: the full objective is complete and verified.",
-    "- RALPH_LOOP_BLOCKED: user input or external state is required.",
-    "- RALPH_LOOP_CONTINUE: another iteration is needed.",
+    "Stop condition aligned with Ralph: if the full objective is complete and verified, output exactly <promise>COMPLETE</promise>.",
+    "Otherwise, end your response normally after completing one checkpoint. The controller will start the next fresh session.",
     "",
     "Also include a brief progress summary, verification result, and the next checkpoint if continuing.",
     `Iteration: ${iteration}/${state.value.maxIterations}`,
@@ -428,7 +426,6 @@ function iterationPrompt(iteration: number) {
 
 function classify(text: string): LoopStatus {
   if (text.includes("<promise>COMPLETE</promise>")) return "done";
-  if (text.includes("RALPH_LOOP_BLOCKED")) return "blocked";
   return "running";
 }
 

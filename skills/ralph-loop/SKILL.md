@@ -22,10 +22,7 @@ Each invocation is one iteration. Do not treat Ralph Loop as a separate agent co
 5. Write reusable findings, pitfalls, and next-iteration context to `Locus/ralph-loop/progress.md`. If the project also has `.ralph/progress.txt` or PRD status files, keep them in sync when appropriate.
 6. If this iteration completes a story and a PRD status file exists, mark that story as `passes: true`.
 7. If this iteration changes code, follow the project's commit convention. If there is not enough context or the user does not want commits, clearly list the uncommitted changes.
-8. The final line must contain exactly one standalone stop marker:
-   - `<promise>COMPLETE</promise>`: the full objective/story set is complete and verified.
-   - `RALPH_LOOP_BLOCKED`: user input or external state is required.
-   - `RALPH_LOOP_CONTINUE`: another iteration is needed.
+8. If the full objective/story set is complete and verified, output exactly `<promise>COMPLETE</promise>`. Otherwise, end the response normally after completing one checkpoint.
 
 ## Output Format
 
@@ -34,6 +31,6 @@ Keep the final response brief:
 - Checkpoint/story completed in this iteration.
 - Verification result.
 - Next checkpoint, if continuing.
-- The final line is the single status marker.
+- `<promise>COMPLETE</promise>` only when the full objective is complete.
 
 Do not claim completion without concrete verification.

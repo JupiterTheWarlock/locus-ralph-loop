@@ -28,11 +28,11 @@ The View stores loop state in the active workspace:
 - `Locus/ralph-loop/state.json`
 - `Locus/ralph-loop/progress.md`
 
-Each iteration creates a fresh Locus session, sends one focused prompt, waits for the run to finish, records the result, and continues until the agent emits one of:
+Each iteration creates a fresh Locus session, sends one focused prompt, waits for the run to finish, records the result, and continues until the agent emits:
 
 - `<promise>COMPLETE</promise>`
-- `RALPH_LOOP_BLOCKED`
-- `RALPH_LOOP_CONTINUE`
+
+If `<promise>COMPLETE</promise>` is not present, the controller starts another iteration until the maximum iteration count is reached.
 
 ## Status
 
