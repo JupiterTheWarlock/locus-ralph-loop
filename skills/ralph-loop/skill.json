@@ -1,0 +1,13 @@
+{
+  "schema": "locus.skill.v1",
+  "id": "ralph-loop",
+  "name": "Ralph Loop",
+  "version": "0.1.0",
+  "injectMode": "excerpt",
+  "description": "Use when a Locus Ralph Loop controller asks the agent to advance one checkpoint in a long-running task.",
+  "command": {
+    "enabled": true,
+    "trigger": "/ralph-loop",
+    "argumentHint": "<objective or checkpoint>"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "locus-ralph-loop",
+  "name": "Locus Ralph Loop",
+  "version": "0.1.0",
+  "compatibility": {
+    "projectIndependent": true
+  },
+  "components": {
+    "views": [
+      {
+        "id": "ralph-loop",
+        "path": "views/ralph-loop"
+      }
+    ],
+    "skills": [
+      {
+        "id": "ralph-loop",
+        "path": "skills/ralph-loop"
+      }
+    ],
+    "rules": [
+      {
+        "id": "ralph-loop-guardrails",
+        "path": "rules/ralph-loop-guardrails.md"
+      }
+    ]
+  }
+}
