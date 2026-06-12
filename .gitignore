@@ -2,5 +2,7 @@
 Thumbs.db
 node_modules/
 dist/
+__pycache__/
+*.pyc
 .tmp/
 *.log

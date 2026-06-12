@@ -1,0 +1,85 @@
+name: Release Plugin
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Read plugin manifest
+        id: manifest
+        run: |
+          python scripts/validate_plugin.py
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path("locus.plugin.json").read_text(encoding="utf-8-sig"))
+          print(f"id={manifest['id']}")
+          print(f"version={manifest['version']}")
+          print(f"tag=v{manifest['version']}")
+          print(f"asset={manifest['id']}-{manifest['version']}.zip")
+          PY
+
+      - name: Check release and tag state
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.manifest.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build plugin archive
+        if: steps.existing.outputs.release_exists == 'false'
+        run: python scripts/package_plugin.py
+
+      - name: Create tag
+        if: steps.existing.outputs.release_exists == 'false' && steps.existing.outputs.tag_exists == 'false'
+        env:
+          TAG: ${{ steps.manifest.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub release
+        if: steps.existing.outputs.release_exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.manifest.outputs.tag }}
+          PLUGIN_ID: ${{ steps.manifest.outputs.id }}
+          VERSION: ${{ steps.manifest.outputs.version }}
+          ASSET: ${{ steps.manifest.outputs.asset }}
+        run: |
+          gh release create "$TAG" "dist/$ASSET" \
+            --title "$PLUGIN_ID $VERSION" \
+            --notes "Release $VERSION for $PLUGIN_ID."
+
+      - name: Release already exists
+        if: steps.existing.outputs.release_exists == 'true'
+        run: |
+          echo "Release ${{ steps.manifest.outputs.tag }} already exists; bump locus.plugin.json version to publish a new asset."
