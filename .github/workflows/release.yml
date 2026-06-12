@@ -2,9 +2,8 @@ name: Release Plugin
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    tags:
+      - "v*"
 
 permissions:
   contents: write
@@ -35,6 +34,16 @@ jobs:
           print(f"asset={manifest['id']}-{manifest['version']}.zip")
           PY
 
+      - name: Verify tag matches manifest version
+        env:
+          EXPECTED_TAG: ${{ steps.manifest.outputs.tag }}
+          ACTUAL_TAG: ${{ github.ref_name }}
+        run: |
+          if [ "$ACTUAL_TAG" != "$EXPECTED_TAG" ]; then
+            echo "Tag $ACTUAL_TAG does not match locus.plugin.json version tag $EXPECTED_TAG."
+            exit 1
+          fi
+
       - name: Check release and tag state
         id: existing
         env:
@@ -46,25 +55,10 @@ jobs:
           else
             echo "release_exists=false" >> "$GITHUB_OUTPUT"
           fi
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Build plugin archive
         if: steps.existing.outputs.release_exists == 'false'
         run: python scripts/package_plugin.py
-
-      - name: Create tag
-        if: steps.existing.outputs.release_exists == 'false' && steps.existing.outputs.tag_exists == 'false'
-        env:
-          TAG: ${{ steps.manifest.outputs.tag }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag "$TAG"
-          git push origin "$TAG"
 
       - name: Create GitHub release
         if: steps.existing.outputs.release_exists == 'false'
@@ -82,4 +76,4 @@ jobs:
       - name: Release already exists
         if: steps.existing.outputs.release_exists == 'true'
         run: |
-          echo "Release ${{ steps.manifest.outputs.tag }} already exists; bump locus.plugin.json version to publish a new asset."
+          echo "Release ${{ steps.manifest.outputs.tag }} already exists; bump locus.plugin.json version and push a matching tag to publish a new asset."
