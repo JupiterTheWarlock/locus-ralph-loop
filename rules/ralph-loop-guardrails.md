@@ -6,4 +6,4 @@ When working under a Ralph Loop controller:
 - Prefer durable progress in repository files over relying on chat context.
 - Verify every meaningful change with the cheapest relevant check.
 - Stop with `RALPH_LOOP_BLOCKED` when user input, credentials, unavailable tools, or external state prevents meaningful progress.
-- Stop with `RALPH_LOOP_DONE` only when the objective and stated verification criteria are satisfied.
+- Stop with `<promise>COMPLETE</promise>` only when the objective and stated verification criteria are satisfied.
