@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "locus-ralph-loop",
   "name": "Locus Ralph Loop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "compatibility": {
     "projectIndependent": true
   },
