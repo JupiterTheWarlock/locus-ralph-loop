@@ -37,3 +37,5 @@ If `<promise>COMPLETE</promise>` is not present, the controller starts another i
 ## Status
 
 This is an early public scaffold. It is designed to validate the plugin-based loop architecture before adding richer verifiers, PRD import, and task-list scheduling.
+
+See `docs/production-runtime-notes.md` for production test notes and current Locus View runtime API gaps.
